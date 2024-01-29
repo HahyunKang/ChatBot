@@ -2,12 +2,15 @@ package com.app.chatbot
 
 import android.Manifest
 import android.content.Intent
+import android.graphics.Rect
+import android.inputmethodservice.Keyboard
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import android.view.ViewTreeObserver
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -36,7 +40,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -83,6 +91,8 @@ class MainActivity : ComponentActivity() {
                 val viewModel : ChatViewModel = viewModel()
                 val message = viewModel.message
                 val listState = rememberLazyListState()
+                val isKeyboardOpen by keyboardAsState()
+
 
                 val listener: RecognitionListener = object : RecognitionListener {
                     override fun onReadyForSpeech(params: Bundle) {
@@ -146,8 +156,8 @@ class MainActivity : ComponentActivity() {
                 };
                 Log.e("message_Test in Main",message.value)
 
-                LaunchedEffect(key1 = messages.size) {
-                    if(messages.isNotEmpty())listState.animateScrollToItem(index = messages.size - 1)
+                LaunchedEffect(key1 = messages.size, key2 = isKeyboardOpen) {
+                    if(isKeyboardOpen == com.app.chatbot.Keyboard.Opened && messages.isNotEmpty())listState.scrollToItem(index = messages.size - 1)
                 }
 
                 LaunchedEffect(Unit) {
@@ -172,7 +182,9 @@ class MainActivity : ComponentActivity() {
                             .fillMaxWidth()
                             .weight(7f),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        state = listState
+                        state = listState,
+                        userScrollEnabled = true,
+                        contentPadding = PaddingValues(0.dp)
                     ){
                         itemsIndexed(messages){
                             index,item ->
@@ -295,7 +307,34 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+enum class Keyboard {
+    Opened, Closed
+}
+@Composable
+fun keyboardAsState(): State<com.app.chatbot.Keyboard> {
+    val keyboardState = remember { mutableStateOf(com.app.chatbot.Keyboard.Closed) }
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val onGlobalListener = ViewTreeObserver.OnGlobalLayoutListener {
+            val rect = Rect()
+            view.getWindowVisibleDisplayFrame(rect)
+            val screenHeight = view.rootView.height
+            val keypadHeight = screenHeight - rect.bottom
+            keyboardState.value = if (keypadHeight > screenHeight * 0.15) {
+                com.app.chatbot.Keyboard.Opened
+            } else {
+                com.app.chatbot.Keyboard.Closed
+            }
+        }
+        view.viewTreeObserver.addOnGlobalLayoutListener(onGlobalListener)
 
+        onDispose {
+            view.viewTreeObserver.removeOnGlobalLayoutListener(onGlobalListener)
+        }
+    }
+
+    return keyboardState
+}
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
     Text(
